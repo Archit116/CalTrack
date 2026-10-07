@@ -1,5 +1,5 @@
 import libsql_experimental as libsql
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.pool import StaticPool
 
@@ -9,10 +9,15 @@ settings = get_settings()
 
 
 def get_turso_connection():
-    """Create a Turso/libsql connection"""
+    """Create a Turso/libsql connection with patched methods"""
     url = settings.turso_database_url
     token = settings.turso_auth_token
-    return libsql.connect(database=url, auth_token=token)
+    conn = libsql.connect(database=url, auth_token=token)
+
+    # Patch create_function to no-op (SQLAlchemy tries to use it for regexp)
+    conn.create_function = lambda *args, **kwargs: None
+
+    return conn
 
 
 # Use libsql with SQLAlchemy via creator pattern
