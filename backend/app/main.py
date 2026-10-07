@@ -39,7 +39,7 @@ def root():
     return {"message": "CalTrack API", "docs": "/docs"}
 
 
-# Auto-load data on startup
-@app.on_event("startup")
-def startup_event():
-    auto_load_data()
+# Auto-load data on startup (disabled for serverless - use manual seeding)
+# @app.on_event("startup")
+# def startup_event():
+#     auto_load_data()
