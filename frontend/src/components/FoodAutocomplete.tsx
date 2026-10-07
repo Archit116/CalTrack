@@ -8,9 +8,10 @@ interface Props {
   category: FoodCategory;
 }
 
-interface ExtendedFood extends Food {
+interface ExtendedFood extends Omit<Food, 'barcode' | 'created_at'> {
   is_external?: boolean;
   barcode?: string | null;
+  created_at?: string;
 }
 
 const MEAL_TYPES: MealType[] = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
