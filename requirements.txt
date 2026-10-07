@@ -8,4 +8,4 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 httpx==0.26.0
 pandas==2.1.4
-sqlitecloud==0.2.1
+mangum==0.17.0
