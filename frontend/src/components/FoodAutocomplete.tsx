@@ -102,12 +102,15 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
 
     setSavingExternal(true);
     try {
-      let foodToLog = selectedFood;
+      let foodToLog: Food;
 
       // If external food, save to database first
       if (selectedFood.is_external || selectedFood.id === -1) {
         const savedFood = await saveExternalMutation.mutateAsync(selectedFood);
         foodToLog = savedFood;
+      } else {
+        // Cast to Food - we know local foods have all required fields
+        foodToLog = selectedFood as Food;
       }
 
       onSelect(foodToLog, mealType);
