@@ -8,9 +8,21 @@ from .config import get_settings
 settings = get_settings()
 database_url = settings.database_url
 
+
 def get_sqlitecloud_connection():
-    """Create a new SQLiteCloud connection"""
-    return sqlitecloud.connect(database_url)
+    """Create a new SQLiteCloud connection with patched create_function"""
+    conn = sqlitecloud.connect(database_url)
+
+    # Patch create_function to handle 'deterministic' argument
+    # SQLiteCloud doesn't support this argument but SQLAlchemy passes it
+    original_create_function = conn.create_function
+    def patched_create_function(name, num_params, func, **kwargs):
+        # Ignore deterministic and other kwargs
+        return original_create_function(name, num_params, func)
+    conn.create_function = patched_create_function
+
+    return conn
+
 
 # Use SQLiteCloud with SQLAlchemy
 engine = create_engine(
