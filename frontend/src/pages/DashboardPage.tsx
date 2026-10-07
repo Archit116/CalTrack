@@ -1,19 +1,21 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getDailySummary, getWaterTotal, logWater, deleteMeal, logMeal, getRecommendations } from '../api/client';
+import { getDailySummary, getWaterTotal, logWater, deleteMeal, logMeal, lookupBarcode } from '../api/client';
 import { useAuthStore } from '../stores/authStore';
 import type { MealType, FoodCategory, Food, MealLog } from '../types';
 import AddFoodModal from '../components/AddFoodModal';
+import FoodAutocomplete from '../components/FoodAutocomplete';
+import BarcodeScanner from '../components/BarcodeScanner';
 
 const MEAL_TYPES: MealType[] = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 const CATEGORIES: FoodCategory[] = ['All', 'HK Classic', 'Indian', 'Beverage', 'Packaged'];
 
 export default function DashboardPage() {
   const [selectedCategory, setSelectedCategory] = useState<FoodCategory>('All');
-  const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedMeal, setSelectedMeal] = useState<MealType | null>(null);
-  const [selectedFood, setSelectedFood] = useState<Food | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedFood, setScannedFood] = useState<Food | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
@@ -26,12 +28,6 @@ export default function DashboardPage() {
   const { data: waterData } = useQuery({
     queryKey: ['waterTotal'],
     queryFn: () => getWaterTotal(),
-  });
-
-  const { data: foods } = useQuery({
-    queryKey: ['recommendations', searchQuery, selectedCategory],
-    queryFn: () => getRecommendations(searchQuery, selectedCategory, 15),
-    enabled: searchQuery.length > 1,
   });
 
   const logWaterMutation = useMutation({
@@ -54,11 +50,25 @@ export default function DashboardPage() {
       logMeal(foodId, mealType),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dailySummary'] });
-      setSearchQuery('');
-      setSelectedFood(null);
-      setSelectedMeal(null);
+      setScannedFood(null);
     },
   });
+
+  const handleFoodSelect = (food: Food, mealType: MealType) => {
+    logMealMutation.mutate({ foodId: food.id, mealType });
+  };
+
+  const handleBarcodeScan = useCallback(async (barcode: string) => {
+    setShowScanner(false);
+    setScanError(null);
+    try {
+      const food = await lookupBarcode(barcode);
+      setScannedFood(food);
+    } catch {
+      setScanError(`No food found for barcode: ${barcode}`);
+      setTimeout(() => setScanError(null), 3000);
+    }
+  }, []);
 
   const calorieGoal = user?.daily_calorie_goal || 2000;
   const totalCalories = summary?.total_calories || 0;
@@ -67,20 +77,6 @@ export default function DashboardPage() {
   const waterGoal = user?.daily_water_goal_ml || 2000;
   const totalWater = waterData?.total_ml || 0;
   const waterPercent = Math.min(Math.round((totalWater / waterGoal) * 100), 100);
-
-  const selectFood = (food: Food) => {
-    setSelectedFood(food);
-    if (selectedMeal) {
-      logMealMutation.mutate({ foodId: food.id, mealType: selectedMeal });
-    }
-  };
-
-  const handleMealSelect = (meal: MealType) => {
-    setSelectedMeal(meal);
-    if (selectedFood) {
-      logMealMutation.mutate({ foodId: selectedFood.id, mealType: meal });
-    }
-  };
 
   if (isLoading) {
     return <div className="text-center py-8 text-slate-400">Loading...</div>;
@@ -178,23 +174,16 @@ export default function DashboardPage() {
       {/* Search & Add Food */}
       <section className="space-y-3">
         <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="Search foods..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-400 text-slate-100 placeholder-slate-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-200 text-sm"
-              >
-                ✕
-              </button>
-            )}
+          <div className="flex-1">
+            <FoodAutocomplete onSelect={handleFoodSelect} category={selectedCategory} />
           </div>
+          <button
+            onClick={() => setShowScanner(true)}
+            className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 rounded-xl text-lg transition"
+            title="Scan Barcode"
+          >
+            📷
+          </button>
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 rounded-xl text-sm transition"
@@ -220,47 +209,48 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Search Results */}
-        {searchQuery && foods && foods.length > 0 && (
-          <div className="bg-slate-800 border border-slate-700 rounded-xl max-h-80 overflow-y-auto divide-y divide-slate-700/50">
-            {foods.map((food) => (
-              <div
-                key={food.id}
-                className="p-3 hover:bg-slate-700/60 transition cursor-pointer"
-                onClick={() => selectFood(food)}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="font-semibold text-slate-100 text-sm">{food.name}</div>
-                    <div className="text-xs text-slate-400">
-                      {food.category} • {food.unit}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-amber-400 font-bold text-sm">{food.calories} kcal</div>
-                    <div className="text-[10px] text-slate-400">
-                      P:{food.protein}g C:{food.carbs}g F:{food.fat}g
-                    </div>
-                  </div>
+        {/* Scan Error Toast */}
+        {scanError && (
+          <div className="bg-rose-500/20 border border-rose-500 text-rose-300 px-4 py-2 rounded-lg text-sm">
+            {scanError}
+          </div>
+        )}
+
+        {/* Scanned Food Result */}
+        {scannedFood && (
+          <div className="bg-slate-800 border border-amber-400 rounded-xl p-4">
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <div className="font-semibold text-slate-100">{scannedFood.name}</div>
+                <div className="text-xs text-slate-400">
+                  {scannedFood.category} • {scannedFood.unit}
                 </div>
-                {selectedFood?.id === food.id && !selectedMeal && (
-                  <div className="mt-2 flex gap-2">
-                    {MEAL_TYPES.map((meal) => (
-                      <button
-                        key={meal}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMealSelect(meal);
-                        }}
-                        className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 py-1 rounded text-xs font-medium"
-                      >
-                        {meal}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
-            ))}
+              <div className="text-right">
+                <div className="text-amber-400 font-bold">{scannedFood.calories} kcal</div>
+                <div className="text-[10px] text-slate-400">
+                  P:{scannedFood.protein}g C:{scannedFood.carbs}g F:{scannedFood.fat}g
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {MEAL_TYPES.map((meal) => (
+                <button
+                  key={meal}
+                  onClick={() => handleFoodSelect(scannedFood, meal)}
+                  disabled={logMealMutation.isPending}
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 py-2 rounded-lg text-xs font-bold transition"
+                >
+                  {meal}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setScannedFood(null)}
+              className="w-full mt-2 text-slate-400 hover:text-slate-200 text-xs"
+            >
+              Cancel
+            </button>
           </div>
         )}
       </section>
@@ -315,6 +305,9 @@ export default function DashboardPage() {
       </section>
 
       {showAddModal && <AddFoodModal onClose={() => setShowAddModal(false)} />}
+      {showScanner && (
+        <BarcodeScanner onScan={handleBarcodeScan} onClose={() => setShowScanner(false)} />
+      )}
     </div>
   );
 }

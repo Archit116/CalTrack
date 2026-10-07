@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
-from .routers import auth, foods, meals, stats, tracking, templates, search
+from .routers import auth, foods, meals, stats, tracking, templates, search, seed
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -30,6 +30,7 @@ app.include_router(stats.router)
 app.include_router(tracking.router)
 app.include_router(templates.router)
 app.include_router(search.router)
+app.include_router(seed.router)
 
 
 @app.get("/")
