@@ -1,28 +1,22 @@
-import os
+import sqlitecloud
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.pool import StaticPool
 
 from .config import get_settings
 
 settings = get_settings()
 database_url = settings.database_url
 
-# For Vercel serverless, use /tmp for SQLite (only writable directory)
-if database_url.startswith("sqlite:///") and not database_url.startswith("sqlite:///:memory:"):
-    # Use /tmp directory for Vercel
-    db_path = "/tmp/caltrack.db"
-    database_url = f"sqlite:///{db_path}"
+def get_sqlitecloud_connection():
+    """Create a new SQLiteCloud connection"""
+    return sqlitecloud.connect(database_url)
 
-# Handle SQLiteCloud URL - convert to use sqlitecloud package directly
-if database_url.startswith("sqlitecloud://"):
-    # For now, fall back to local SQLite in /tmp for serverless
-    # SQLiteCloud requires special handling
-    database_url = "sqlite:////tmp/caltrack.db"
-
+# Use SQLiteCloud with SQLAlchemy
 engine = create_engine(
-    database_url,
-    connect_args={"check_same_thread": False},
-    pool_pre_ping=True,
+    "sqlite://",
+    creator=get_sqlitecloud_connection,
+    poolclass=StaticPool,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
