@@ -1,5 +1,5 @@
 import libsql_experimental as libsql
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.pool import StaticPool
 
@@ -8,16 +8,60 @@ from .config import get_settings
 settings = get_settings()
 
 
+class LibsqlConnectionWrapper:
+    """Wrapper to make libsql connection compatible with SQLAlchemy's expectations"""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def create_function(self, *args, **kwargs):
+        """No-op - libsql doesn't support create_function"""
+        pass
+
+    def create_aggregate(self, *args, **kwargs):
+        """No-op - libsql doesn't support create_aggregate"""
+        pass
+
+    def create_collation(self, *args, **kwargs):
+        """No-op - libsql doesn't support create_collation"""
+        pass
+
+    def set_authorizer(self, *args, **kwargs):
+        """No-op - libsql doesn't support set_authorizer"""
+        pass
+
+    def set_progress_handler(self, *args, **kwargs):
+        """No-op - libsql doesn't support set_progress_handler"""
+        pass
+
+    def cursor(self):
+        return self._conn.cursor()
+
+    def execute(self, *args, **kwargs):
+        return self._conn.execute(*args, **kwargs)
+
+    def executemany(self, *args, **kwargs):
+        return self._conn.executemany(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+
 def get_turso_connection():
-    """Create a Turso/libsql connection with patched methods"""
+    """Create a Turso/libsql connection wrapped for SQLAlchemy compatibility"""
     url = settings.turso_database_url
     token = settings.turso_auth_token
     conn = libsql.connect(database=url, auth_token=token)
-
-    # Patch create_function to no-op (SQLAlchemy tries to use it for regexp)
-    conn.create_function = lambda *args, **kwargs: None
-
-    return conn
+    return LibsqlConnectionWrapper(conn)
 
 
 # Use libsql with SQLAlchemy via creator pattern
