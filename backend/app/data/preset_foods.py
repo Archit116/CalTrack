@@ -1,13 +1,8 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+# Preset food database - combined from HK foods, Indian (Kaggle-style), and common items
+# This is loaded into memory and seeded to DB on startup
 
-from ..database import get_db
-from ..models import Food
-
-router = APIRouter(prefix="/api/seed", tags=["seed"])
-
-# Hong Kong classic foods
-HK_FOODS = [
+PRESET_FOODS = [
+    # Hong Kong Classic Foods
     {"name": "Char Siu Rice", "category": "HK Classic", "calories": 650, "protein": 30, "carbs": 75, "fat": 22, "unit": "1 plate"},
     {"name": "Roast Goose Rice", "category": "HK Classic", "calories": 720, "protein": 35, "carbs": 70, "fat": 30, "unit": "1 plate"},
     {"name": "Wonton Noodle Soup", "category": "HK Classic", "calories": 380, "protein": 18, "carbs": 45, "fat": 12, "unit": "1 bowl"},
@@ -22,11 +17,6 @@ HK_FOODS = [
     {"name": "Dim Sum - Cheung Fun", "category": "HK Classic", "calories": 220, "protein": 8, "carbs": 28, "fat": 8, "unit": "1 roll"},
     {"name": "Roast Duck Rice", "category": "HK Classic", "calories": 680, "protein": 32, "carbs": 68, "fat": 28, "unit": "1 plate"},
     {"name": "Clay Pot Rice", "category": "HK Classic", "calories": 620, "protein": 25, "carbs": 72, "fat": 24, "unit": "1 pot"},
-    {"name": "Milk Tea (Hot)", "category": "Beverage", "calories": 150, "protein": 3, "carbs": 22, "fat": 6, "unit": "1 cup"},
-    {"name": "Milk Tea (Iced)", "category": "Beverage", "calories": 180, "protein": 3, "carbs": 28, "fat": 6, "unit": "1 cup"},
-    {"name": "Yuenyeung (Coffee Milk Tea)", "category": "Beverage", "calories": 170, "protein": 4, "carbs": 24, "fat": 6, "unit": "1 cup"},
-    {"name": "Lemon Tea (Iced)", "category": "Beverage", "calories": 120, "protein": 0, "carbs": 30, "fat": 0, "unit": "1 cup"},
-    {"name": "Soy Milk", "category": "Beverage", "calories": 80, "protein": 7, "carbs": 4, "fat": 4, "unit": "1 cup"},
     {"name": "Sweet Tofu Pudding", "category": "HK Classic", "calories": 150, "protein": 5, "carbs": 25, "fat": 3, "unit": "1 bowl"},
     {"name": "Macaroni Soup with Ham", "category": "HK Classic", "calories": 380, "protein": 15, "carbs": 45, "fat": 14, "unit": "1 bowl"},
     {"name": "Instant Noodles with Luncheon Meat", "category": "HK Classic", "calories": 520, "protein": 18, "carbs": 55, "fat": 25, "unit": "1 bowl"},
@@ -36,10 +26,15 @@ HK_FOODS = [
     {"name": "Siu Yuk Rice", "category": "HK Classic", "calories": 750, "protein": 30, "carbs": 70, "fat": 38, "unit": "1 plate"},
     {"name": "Hainanese Chicken Rice", "category": "HK Classic", "calories": 580, "protein": 35, "carbs": 60, "fat": 20, "unit": "1 plate"},
     {"name": "Sweet & Sour Pork Rice", "category": "HK Classic", "calories": 620, "protein": 22, "carbs": 75, "fat": 24, "unit": "1 plate"},
-]
+    {"name": "White Rice", "category": "HK Classic", "calories": 200, "protein": 4, "carbs": 45, "fat": 0.5, "unit": "1 bowl"},
+    {"name": "Brown Rice", "category": "HK Classic", "calories": 220, "protein": 5, "carbs": 45, "fat": 2, "unit": "1 bowl"},
+    {"name": "Steamed Vegetables", "category": "HK Classic", "calories": 50, "protein": 2, "carbs": 10, "fat": 0, "unit": "1 serving"},
+    {"name": "Grilled Chicken Breast", "category": "HK Classic", "calories": 165, "protein": 31, "carbs": 0, "fat": 4, "unit": "100g"},
+    {"name": "Boiled Egg", "category": "HK Classic", "calories": 78, "protein": 6, "carbs": 0.5, "fat": 5, "unit": "1 egg"},
+    {"name": "Banana", "category": "HK Classic", "calories": 105, "protein": 1, "carbs": 27, "fat": 0.4, "unit": "1 medium"},
+    {"name": "Apple", "category": "HK Classic", "calories": 95, "protein": 0.5, "carbs": 25, "fat": 0.3, "unit": "1 medium"},
 
-# Indian foods (simplified Kaggle-like data)
-INDIAN_FOODS = [
+    # Indian Foods (Kaggle-style dataset)
     {"name": "Butter Chicken", "category": "Indian", "calories": 490, "protein": 28, "carbs": 12, "fat": 38, "unit": "1 serving"},
     {"name": "Chicken Biryani", "category": "Indian", "calories": 550, "protein": 25, "carbs": 65, "fat": 18, "unit": "1 plate"},
     {"name": "Dal Makhani", "category": "Indian", "calories": 320, "protein": 12, "carbs": 35, "fat": 15, "unit": "1 bowl"},
@@ -59,9 +54,6 @@ INDIAN_FOODS = [
     {"name": "Raita", "category": "Indian", "calories": 60, "protein": 3, "carbs": 5, "fat": 3, "unit": "1 serving"},
     {"name": "Gulab Jamun", "category": "Indian", "calories": 150, "protein": 2, "carbs": 25, "fat": 5, "unit": "2 pieces"},
     {"name": "Kheer", "category": "Indian", "calories": 180, "protein": 5, "carbs": 30, "fat": 5, "unit": "1 bowl"},
-    {"name": "Lassi (Sweet)", "category": "Beverage", "calories": 180, "protein": 6, "carbs": 28, "fat": 5, "unit": "1 glass"},
-    {"name": "Mango Lassi", "category": "Beverage", "calories": 220, "protein": 6, "carbs": 38, "fat": 5, "unit": "1 glass"},
-    {"name": "Chai Tea", "category": "Beverage", "calories": 100, "protein": 3, "carbs": 15, "fat": 3, "unit": "1 cup"},
     {"name": "Korma (Chicken)", "category": "Indian", "calories": 420, "protein": 25, "carbs": 15, "fat": 30, "unit": "1 serving"},
     {"name": "Vindaloo (Lamb)", "category": "Indian", "calories": 380, "protein": 28, "carbs": 10, "fat": 26, "unit": "1 serving"},
     {"name": "Keema", "category": "Indian", "calories": 320, "protein": 22, "carbs": 8, "fat": 24, "unit": "1 serving"},
@@ -71,68 +63,53 @@ INDIAN_FOODS = [
     {"name": "Puri", "category": "Indian", "calories": 150, "protein": 3, "carbs": 18, "fat": 8, "unit": "2 pieces"},
     {"name": "Paratha (Plain)", "category": "Indian", "calories": 200, "protein": 5, "carbs": 30, "fat": 8, "unit": "1 piece"},
     {"name": "Aloo Paratha", "category": "Indian", "calories": 280, "protein": 6, "carbs": 38, "fat": 12, "unit": "1 piece"},
-]
+    {"name": "Chole Bhature", "category": "Indian", "calories": 450, "protein": 12, "carbs": 55, "fat": 20, "unit": "1 serving"},
+    {"name": "Pav Bhaji", "category": "Indian", "calories": 400, "protein": 10, "carbs": 50, "fat": 18, "unit": "1 serving"},
+    {"name": "Rajma Chawal", "category": "Indian", "calories": 380, "protein": 14, "carbs": 60, "fat": 10, "unit": "1 plate"},
+    {"name": "Kadhi Pakora", "category": "Indian", "calories": 280, "protein": 8, "carbs": 25, "fat": 18, "unit": "1 bowl"},
+    {"name": "Bhindi Masala", "category": "Indian", "calories": 150, "protein": 4, "carbs": 15, "fat": 9, "unit": "1 serving"},
+    {"name": "Baingan Bharta", "category": "Indian", "calories": 180, "protein": 5, "carbs": 18, "fat": 10, "unit": "1 serving"},
+    {"name": "Malai Kofta", "category": "Indian", "calories": 420, "protein": 12, "carbs": 30, "fat": 30, "unit": "1 serving"},
+    {"name": "Shahi Paneer", "category": "Indian", "calories": 380, "protein": 14, "carbs": 15, "fat": 30, "unit": "1 serving"},
+    {"name": "Chicken Tikka Masala", "category": "Indian", "calories": 450, "protein": 30, "carbs": 18, "fat": 28, "unit": "1 serving"},
+    {"name": "Lamb Rogan Josh", "category": "Indian", "calories": 400, "protein": 28, "carbs": 12, "fat": 28, "unit": "1 serving"},
 
-# Common packaged/fast foods
-PACKAGED_FOODS = [
+    # Beverages
+    {"name": "Milk Tea (Hot)", "category": "Beverage", "calories": 150, "protein": 3, "carbs": 22, "fat": 6, "unit": "1 cup"},
+    {"name": "Milk Tea (Iced)", "category": "Beverage", "calories": 180, "protein": 3, "carbs": 28, "fat": 6, "unit": "1 cup"},
+    {"name": "Yuenyeung (Coffee Milk Tea)", "category": "Beverage", "calories": 170, "protein": 4, "carbs": 24, "fat": 6, "unit": "1 cup"},
+    {"name": "Lemon Tea (Iced)", "category": "Beverage", "calories": 120, "protein": 0, "carbs": 30, "fat": 0, "unit": "1 cup"},
+    {"name": "Soy Milk", "category": "Beverage", "calories": 80, "protein": 7, "carbs": 4, "fat": 4, "unit": "1 cup"},
+    {"name": "Lassi (Sweet)", "category": "Beverage", "calories": 180, "protein": 6, "carbs": 28, "fat": 5, "unit": "1 glass"},
+    {"name": "Mango Lassi", "category": "Beverage", "calories": 220, "protein": 6, "carbs": 38, "fat": 5, "unit": "1 glass"},
+    {"name": "Chai Tea", "category": "Beverage", "calories": 100, "protein": 3, "carbs": 15, "fat": 3, "unit": "1 cup"},
     {"name": "Coca-Cola", "category": "Beverage", "calories": 140, "protein": 0, "carbs": 39, "fat": 0, "unit": "330ml can"},
     {"name": "Sprite", "category": "Beverage", "calories": 140, "protein": 0, "carbs": 38, "fat": 0, "unit": "330ml can"},
     {"name": "Red Bull", "category": "Beverage", "calories": 110, "protein": 0, "carbs": 27, "fat": 0, "unit": "250ml can"},
     {"name": "Orange Juice", "category": "Beverage", "calories": 110, "protein": 2, "carbs": 26, "fat": 0, "unit": "250ml"},
+    {"name": "Starbucks Latte (Grande)", "category": "Beverage", "calories": 190, "protein": 13, "carbs": 18, "fat": 7, "unit": "1 cup"},
+    {"name": "Starbucks Frappuccino", "category": "Beverage", "calories": 380, "protein": 5, "carbs": 60, "fat": 14, "unit": "1 cup"},
+    {"name": "Green Tea", "category": "Beverage", "calories": 2, "protein": 0, "carbs": 0, "fat": 0, "unit": "1 cup"},
+    {"name": "Black Coffee", "category": "Beverage", "calories": 5, "protein": 0, "carbs": 0, "fat": 0, "unit": "1 cup"},
+    {"name": "Cappuccino", "category": "Beverage", "calories": 120, "protein": 8, "carbs": 10, "fat": 6, "unit": "1 cup"},
+    {"name": "Bubble Tea (Milk)", "category": "Beverage", "calories": 350, "protein": 3, "carbs": 65, "fat": 8, "unit": "1 cup"},
+    {"name": "Coconut Water", "category": "Beverage", "calories": 45, "protein": 2, "carbs": 9, "fat": 0.5, "unit": "250ml"},
+
+    # Packaged/Fast Food
     {"name": "McDonald's Big Mac", "category": "Packaged", "calories": 550, "protein": 25, "carbs": 45, "fat": 30, "unit": "1 burger"},
     {"name": "McDonald's McChicken", "category": "Packaged", "calories": 400, "protein": 14, "carbs": 40, "fat": 21, "unit": "1 burger"},
     {"name": "McDonald's Fries (Medium)", "category": "Packaged", "calories": 320, "protein": 4, "carbs": 42, "fat": 15, "unit": "1 serving"},
+    {"name": "McDonald's Fries (Large)", "category": "Packaged", "calories": 490, "protein": 6, "carbs": 66, "fat": 23, "unit": "1 serving"},
+    {"name": "McDonald's Chicken McNuggets (6pc)", "category": "Packaged", "calories": 250, "protein": 15, "carbs": 15, "fat": 15, "unit": "6 pieces"},
     {"name": "KFC Original Recipe", "category": "Packaged", "calories": 320, "protein": 22, "carbs": 12, "fat": 21, "unit": "2 pieces"},
+    {"name": "KFC Zinger Burger", "category": "Packaged", "calories": 450, "protein": 22, "carbs": 42, "fat": 22, "unit": "1 burger"},
     {"name": "Subway 6-inch Turkey", "category": "Packaged", "calories": 280, "protein": 18, "carbs": 46, "fat": 3, "unit": "1 sub"},
-    {"name": "Starbucks Latte (Grande)", "category": "Beverage", "calories": 190, "protein": 13, "carbs": 18, "fat": 7, "unit": "1 cup"},
-    {"name": "Starbucks Frappuccino", "category": "Beverage", "calories": 380, "protein": 5, "carbs": 60, "fat": 14, "unit": "1 cup"},
+    {"name": "Subway 6-inch Chicken Teriyaki", "category": "Packaged", "calories": 320, "protein": 26, "carbs": 48, "fat": 4, "unit": "1 sub"},
+    {"name": "Pizza Hut Pepperoni (1 slice)", "category": "Packaged", "calories": 300, "protein": 12, "carbs": 30, "fat": 14, "unit": "1 slice"},
     {"name": "Instant Ramen", "category": "Packaged", "calories": 380, "protein": 9, "carbs": 52, "fat": 14, "unit": "1 pack"},
     {"name": "Cup Noodles", "category": "Packaged", "calories": 290, "protein": 7, "carbs": 38, "fat": 12, "unit": "1 cup"},
-    {"name": "White Rice", "category": "HK Classic", "calories": 200, "protein": 4, "carbs": 45, "fat": 0.5, "unit": "1 bowl"},
-    {"name": "Brown Rice", "category": "HK Classic", "calories": 220, "protein": 5, "carbs": 45, "fat": 2, "unit": "1 bowl"},
-    {"name": "Steamed Vegetables", "category": "HK Classic", "calories": 50, "protein": 2, "carbs": 10, "fat": 0, "unit": "1 serving"},
-    {"name": "Grilled Chicken Breast", "category": "HK Classic", "calories": 165, "protein": 31, "carbs": 0, "fat": 4, "unit": "100g"},
-    {"name": "Boiled Egg", "category": "HK Classic", "calories": 78, "protein": 6, "carbs": 0.5, "fat": 5, "unit": "1 egg"},
-    {"name": "Banana", "category": "HK Classic", "calories": 105, "protein": 1, "carbs": 27, "fat": 0.4, "unit": "1 medium"},
-    {"name": "Apple", "category": "HK Classic", "calories": 95, "protein": 0.5, "carbs": 25, "fat": 0.3, "unit": "1 medium"},
+    {"name": "Protein Bar", "category": "Packaged", "calories": 200, "protein": 20, "carbs": 22, "fat": 7, "unit": "1 bar"},
+    {"name": "Granola Bar", "category": "Packaged", "calories": 150, "protein": 3, "carbs": 25, "fat": 5, "unit": "1 bar"},
+    {"name": "Potato Chips", "category": "Packaged", "calories": 150, "protein": 2, "carbs": 15, "fat": 10, "unit": "1 oz / 28g"},
+    {"name": "Chocolate Bar", "category": "Packaged", "calories": 230, "protein": 3, "carbs": 26, "fat": 13, "unit": "1 bar"},
 ]
-
-
-@router.post("/foods")
-def seed_foods(db: Session = Depends(get_db)):
-    """Seed the database with preset foods. Skips duplicates."""
-    added = 0
-    skipped = 0
-
-    all_foods = HK_FOODS + INDIAN_FOODS + PACKAGED_FOODS
-
-    for food_data in all_foods:
-        existing = db.query(Food).filter(
-            Food.name == food_data["name"],
-            Food.is_preset == True
-        ).first()
-
-        if existing:
-            skipped += 1
-            continue
-
-        food = Food(
-            name=food_data["name"],
-            category=food_data["category"],
-            calories=food_data["calories"],
-            protein=food_data["protein"],
-            carbs=food_data["carbs"],
-            fat=food_data["fat"],
-            unit=food_data["unit"],
-            is_preset=True,
-            created_by=None
-        )
-        db.add(food)
-        added += 1
-
-    db.commit()
-
-    return {
-        "message": f"Seeding complete. Added: {added}, Skipped: {skipped}",
-        "total_foods": added + skipped
-    }

@@ -1,11 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { searchFoods, getFoods } from '../api/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { combinedSearch, getFoods, createFood } from '../api/client';
 import type { Food, FoodCategory, MealType } from '../types';
 
 interface Props {
   onSelect: (food: Food, mealType: MealType) => void;
   category: FoodCategory;
+}
+
+interface ExtendedFood extends Food {
+  is_external?: boolean;
+  barcode?: string | null;
 }
 
 const MEAL_TYPES: MealType[] = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
@@ -14,9 +19,11 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedFood, setSelectedFood] = useState<Food | null>(null);
+  const [selectedFood, setSelectedFood] = useState<ExtendedFood | null>(null);
+  const [savingExternal, setSavingExternal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   // Debounce search query
   useEffect(() => {
@@ -26,22 +33,44 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Search results
+  // Combined search (local + external)
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['foodSearch', debouncedQuery, category],
-    queryFn: () => searchFoods(debouncedQuery, category, 20),
-    enabled: debouncedQuery.length >= 1,
+    queryKey: ['combinedSearch', debouncedQuery, category],
+    queryFn: () => combinedSearch(debouncedQuery, category, 25, true),
+    enabled: debouncedQuery.length >= 2,
   });
 
   // All foods (for browsing when no query)
   const { data: allFoods, isLoading: isLoadingAll } = useQuery({
     queryKey: ['allFoods', category],
     queryFn: () => getFoods('', category),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 
-  const displayFoods = debouncedQuery.length >= 1 ? searchResults : allFoods;
-  const isLoading = debouncedQuery.length >= 1 ? isSearching : isLoadingAll;
+  // Mutation to save external food to database
+  const saveExternalMutation = useMutation({
+    mutationFn: (food: ExtendedFood) =>
+      createFood({
+        name: food.name,
+        category: food.category,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+        unit: food.unit,
+        barcode: food.barcode || null,
+      }),
+    onSuccess: (savedFood) => {
+      queryClient.invalidateQueries({ queryKey: ['allFoods'] });
+      queryClient.invalidateQueries({ queryKey: ['combinedSearch'] });
+      return savedFood;
+    },
+  });
+
+  const displayFoods: ExtendedFood[] = debouncedQuery.length >= 2
+    ? (searchResults as ExtendedFood[] || [])
+    : (allFoods as ExtendedFood[] || []);
+  const isLoading = debouncedQuery.length >= 2 ? isSearching : isLoadingAll;
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -59,20 +88,35 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleFoodClick = (food: Food) => {
-    if (selectedFood?.id === food.id) {
+  const handleFoodClick = (food: ExtendedFood) => {
+    if (selectedFood?.id === food.id && selectedFood?.name === food.name) {
       setSelectedFood(null);
     } else {
       setSelectedFood(food);
     }
   };
 
-  const handleMealSelect = (mealType: MealType) => {
-    if (selectedFood) {
-      onSelect(selectedFood, mealType);
+  const handleMealSelect = async (mealType: MealType) => {
+    if (!selectedFood) return;
+
+    setSavingExternal(true);
+    try {
+      let foodToLog = selectedFood;
+
+      // If external food, save to database first
+      if (selectedFood.is_external || selectedFood.id === -1) {
+        const savedFood = await saveExternalMutation.mutateAsync(selectedFood);
+        foodToLog = savedFood;
+      }
+
+      onSelect(foodToLog, mealType);
       setQuery('');
       setSelectedFood(null);
       setIsOpen(false);
+    } catch (error) {
+      console.error('Failed to log food:', error);
+    } finally {
+      setSavingExternal(false);
     }
   };
 
@@ -82,7 +126,7 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
         <input
           ref={inputRef}
           type="text"
-          placeholder="Search foods or tap to browse..."
+          placeholder="Search foods or tap to browse all..."
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -103,30 +147,39 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
       {isOpen && (
         <div
           ref={dropdownRef}
-          className="absolute z-40 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl max-h-96 overflow-y-auto"
+          className="absolute z-40 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl max-h-[70vh] overflow-y-auto"
         >
           {isLoading ? (
-            <div className="p-4 text-center text-slate-400 text-sm">Loading...</div>
+            <div className="p-4 text-center text-slate-400 text-sm">
+              Searching local & external databases...
+            </div>
           ) : !displayFoods || displayFoods.length === 0 ? (
             <div className="p-4 text-center text-slate-500 text-sm">
-              {debouncedQuery ? 'No foods found' : 'No foods available'}
+              {debouncedQuery ? 'No foods found. Try a different search.' : 'No foods available'}
             </div>
           ) : (
             <div className="divide-y divide-slate-700/50">
-              {displayFoods.map((food) => (
-                <div key={food.id} className="relative">
+              {displayFoods.map((food, idx) => (
+                <div key={`${food.id}-${food.name}-${idx}`} className="relative">
                   <div
                     onClick={() => handleFoodClick(food)}
                     className={`p-3 cursor-pointer transition ${
-                      selectedFood?.id === food.id
+                      selectedFood?.id === food.id && selectedFood?.name === food.name
                         ? 'bg-slate-700'
                         : 'hover:bg-slate-700/60'
                     }`}
                   >
                     <div className="flex justify-between items-center">
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-slate-100 text-sm truncate">
-                          {food.name}
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-100 text-sm truncate">
+                            {food.name}
+                          </span>
+                          {(food.is_external || food.id === -1) && (
+                            <span className="text-[10px] bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded">
+                              External
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-400">
                           {food.category} • {food.unit}
@@ -143,21 +196,28 @@ export default function FoodAutocomplete({ onSelect, category }: Props) {
                     </div>
                   </div>
 
-                  {selectedFood?.id === food.id && (
+                  {selectedFood?.id === food.id && selectedFood?.name === food.name && (
                     <div className="px-3 pb-3 flex gap-2 bg-slate-700">
                       {MEAL_TYPES.map((meal) => (
                         <button
                           key={meal}
                           onClick={() => handleMealSelect(meal)}
-                          className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 py-1.5 rounded-lg text-xs font-bold transition"
+                          disabled={savingExternal}
+                          className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-50"
                         >
-                          {meal}
+                          {savingExternal ? '...' : meal}
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
               ))}
+
+              {debouncedQuery.length >= 2 && (
+                <div className="p-2 text-center text-[10px] text-slate-500 bg-slate-900/50">
+                  Results from local database + Open Food Facts
+                </div>
+              )}
             </div>
           )}
         </div>

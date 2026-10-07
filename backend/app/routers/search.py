@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
+import httpx
 
 from ..database import get_db
 from ..models import Food, User
@@ -9,6 +10,49 @@ from ..schemas import FoodResponse
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/api/search", tags=["search"])
+
+
+async def search_open_food_facts(query: str, limit: int = 10) -> list[dict]:
+    """Search Open Food Facts API for additional foods"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://world.openfoodfacts.org/cgi/search.pl",
+                params={
+                    "search_terms": query,
+                    "search_simple": 1,
+                    "action": "process",
+                    "json": 1,
+                    "page_size": limit,
+                },
+                timeout=5.0
+            )
+            data = response.json()
+
+            results = []
+            for prod in data.get("products", []):
+                nut = prod.get("nutriments", {})
+                name = prod.get("product_name")
+                if not name:
+                    continue
+
+                results.append({
+                    "id": -1,  # Negative ID indicates external
+                    "name": name[:100],
+                    "category": "Packaged",
+                    "calories": int(nut.get("energy-kcal_100g", nut.get("energy-kcal", 0)) or 0),
+                    "protein": round(float(nut.get("proteins_100g", 0) or 0), 1),
+                    "carbs": round(float(nut.get("carbohydrates_100g", 0) or 0), 1),
+                    "fat": round(float(nut.get("fat_100g", 0) or 0), 1),
+                    "unit": "per 100g",
+                    "barcode": prod.get("code"),
+                    "is_preset": False,
+                    "is_external": True,
+                })
+
+            return results
+    except Exception:
+        return []
 
 
 def levenshtein_similarity(s1: str, s2: str) -> float:
@@ -156,6 +200,38 @@ def get_food_recommendations(
         results.extend([food for food, _ in fuzzy_matches[: limit - len(results)]])
 
     return results[:limit]
+
+
+@router.get("/combined")
+async def combined_search(
+    q: str = Query(..., min_length=2, max_length=100),
+    category: Optional[str] = Query(None),
+    include_external: bool = Query(True),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Combined search: local database + Open Food Facts API.
+    Returns local results first, then external results if enabled.
+    """
+    # Get local results first
+    local_results = search_foods_with_recommendations(q, category, min(limit, 15), db, current_user)
+    results = [{"is_external": False, **food.__dict__} for food in local_results]
+
+    # Add external results if enabled and we need more
+    if include_external and len(results) < limit:
+        external_results = await search_open_food_facts(q, limit - len(results))
+
+        # Filter out duplicates by name
+        local_names = {r["name"].lower() for r in results}
+        for ext in external_results:
+            if ext["name"].lower() not in local_names:
+                results.append(ext)
+                if len(results) >= limit:
+                    break
+
+    return results
 
 
 @router.get("/similar", response_model=list[FoodResponse])

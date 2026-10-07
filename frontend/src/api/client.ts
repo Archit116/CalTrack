@@ -99,6 +99,15 @@ export async function searchFoods(q: string, category?: string, limit = 10): Pro
   return fetchApi<Food[]>(`/search/foods?${params}`);
 }
 
+export async function combinedSearch(q: string, category?: string, limit = 20, includeExternal = true): Promise<Food[]> {
+  const params = new URLSearchParams();
+  params.append('q', q);
+  if (category && category !== 'All') params.append('category', category);
+  params.append('limit', limit.toString());
+  params.append('include_external', includeExternal.toString());
+  return fetchApi<Food[]>(`/search/combined?${params}`);
+}
+
 export async function getRecommendations(q: string, category?: string, limit = 5): Promise<Food[]> {
   const params = new URLSearchParams();
   params.append('q', q);
