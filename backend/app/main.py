@@ -1,10 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .database import engine, Base, SessionLocal
-from .models import Food
+from .database import engine, Base
 from .routers import auth, foods, meals, stats, tracking, templates, search
-from .data_loader import auto_load_data
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -39,7 +37,3 @@ def root():
     return {"message": "CalTrack API", "docs": "/docs"}
 
 
-# Auto-load data on startup (disabled for serverless - use manual seeding)
-# @app.on_event("startup")
-# def startup_event():
-#     auto_load_data()
