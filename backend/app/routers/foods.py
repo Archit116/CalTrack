@@ -8,8 +8,46 @@ from ..database import get_db
 from ..models import Food, User
 from ..schemas import FoodCreate, FoodResponse
 from ..auth import get_current_user
+from ..data.preset_foods import PRESET_FOODS
 
 router = APIRouter(prefix="/api/foods", tags=["foods"])
+
+# Track seeding state
+_seeded = False
+
+
+def ensure_seeded(db: Session):
+    """Ensure preset foods are seeded (lazy initialization)"""
+    global _seeded
+    if _seeded:
+        return
+
+    try:
+        existing = db.query(Food).filter(Food.is_preset == True).first()
+        if existing:
+            _seeded = True
+            return
+
+        for food_data in PRESET_FOODS:
+            food = Food(
+                name=food_data["name"],
+                category=food_data["category"],
+                calories=food_data["calories"],
+                protein=food_data["protein"],
+                carbs=food_data["carbs"],
+                fat=food_data["fat"],
+                unit=food_data["unit"],
+                is_preset=True,
+                created_by=None
+            )
+            db.add(food)
+
+        db.commit()
+        _seeded = True
+    except Exception as e:
+        print(f"Seeding error: {e}")
+        db.rollback()
+        _seeded = True  # Don't retry on error
 
 
 @router.get("", response_model=list[FoodResponse])
@@ -19,6 +57,9 @@ def list_foods(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Lazy seed on first foods request
+    ensure_seeded(db)
+
     query = db.query(Food).filter(
         or_(Food.is_preset == True, Food.created_by == current_user.id)
     )

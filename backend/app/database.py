@@ -18,23 +18,18 @@ class LibsqlConnectionWrapper:
         return getattr(self._conn, name)
 
     def create_function(self, *args, **kwargs):
-        """No-op - libsql doesn't support create_function"""
         pass
 
     def create_aggregate(self, *args, **kwargs):
-        """No-op - libsql doesn't support create_aggregate"""
         pass
 
     def create_collation(self, *args, **kwargs):
-        """No-op - libsql doesn't support create_collation"""
         pass
 
     def set_authorizer(self, *args, **kwargs):
-        """No-op - libsql doesn't support set_authorizer"""
         pass
 
     def set_progress_handler(self, *args, **kwargs):
-        """No-op - libsql doesn't support set_progress_handler"""
         pass
 
     def cursor(self):
@@ -58,8 +53,12 @@ class LibsqlConnectionWrapper:
 
 def get_turso_connection():
     """Create a Turso/libsql connection wrapped for SQLAlchemy compatibility"""
-    url = settings.turso_database_url
-    token = settings.turso_auth_token
+    url = settings.get_db_url()
+    token = settings.get_db_token()
+
+    if not url:
+        raise ValueError("TURSO_DATABASE_URL environment variable is not set")
+
     conn = libsql.connect(database=url, auth_token=token)
     return LibsqlConnectionWrapper(conn)
 
