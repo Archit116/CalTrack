@@ -1,0 +1,60 @@
+name: Auto-Load Food Data
+
+on:
+  schedule:
+    # Run every Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  load-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install kagglehub[pandas-datasets] requests
+
+      - name: Configure Kaggle
+        run: |
+          mkdir -p ~/.kaggle
+          echo '${{ secrets.KAGGLE_JSON }}' > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
+        if: secrets.KAGGLE_JSON != ''
+
+      - name: Load data from APIs
+        run: |
+          cd backend
+          python -c "
+import sys
+sys.path.insert(0, '.')
+from app.data_loader import auto_load_data
+from app.database import SessionLocal
+auto_load_data()
+          "
+        env:
+          USDA_API_KEY: ${{ secrets.USDA_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Create commit message
+        run: |
+          echo "Automated food data update - $(date)" > commit_msg.txt
+
+      - name: Commit and push
+        run: |
+          git config --global user.name "CalTrack Bot"
+          git config --global user.email "bot@caltrack.local"
+          git add -A
+          git commit -m "$(cat commit_msg.txt)" || echo "No changes to commit"
+          git push
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
