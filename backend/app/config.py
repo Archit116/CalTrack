@@ -3,7 +3,11 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./caltrack.db"
+    # Turso database settings
+    turso_database_url: str = ""
+    turso_auth_token: str = ""
+
+    # JWT settings
     secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days

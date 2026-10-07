@@ -8,6 +8,5 @@ passlib==1.7.4
 python-multipart==0.0.6
 httpx==0.26.0
 mangum==0.17.0
-sqlitecloud
-sqlalchemy-sqlitecloud
+libsql-experimental
 pandas==2.1.4
