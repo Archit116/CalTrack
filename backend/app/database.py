@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from .config import get_settings
@@ -7,36 +7,23 @@ from .config import get_settings
 settings = get_settings()
 database_url = settings.database_url
 
-# Check if using SQLiteCloud
+# For Vercel serverless, use /tmp for SQLite (only writable directory)
+if database_url.startswith("sqlite:///") and not database_url.startswith("sqlite:///:memory:"):
+    # Use /tmp directory for Vercel
+    db_path = "/tmp/caltrack.db"
+    database_url = f"sqlite:///{db_path}"
+
+# Handle SQLiteCloud URL - convert to use sqlitecloud package directly
 if database_url.startswith("sqlitecloud://"):
-    try:
-        import sqlitecloud
-        # Create SQLiteCloud connection
-        conn = sqlitecloud.connect(database_url)
+    # For now, fall back to local SQLite in /tmp for serverless
+    # SQLiteCloud requires special handling
+    database_url = "sqlite:////tmp/caltrack.db"
 
-        # Create engine using raw connection
-        from sqlalchemy.pool import StaticPool
-        engine = create_engine(
-            "sqlite://",
-            creator=lambda: conn,
-            poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-        )
-    except Exception as e:
-        print(f"SQLiteCloud connection failed: {e}")
-        # Fallback to in-memory SQLite
-        engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-        )
-else:
-    # Standard SQLite file or other database
-    connect_args = {}
-    if database_url.startswith("sqlite"):
-        connect_args["check_same_thread"] = False
-
-    engine = create_engine(database_url, connect_args=connect_args)
-
+engine = create_engine(
+    database_url,
+    connect_args={"check_same_thread": False},
+    pool_pre_ping=True,
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
